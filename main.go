@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
@@ -15,9 +16,15 @@ const port = 3000
 
 // Runs the server, listening for requests until you kill the process.
 func main() {
+	// Create the router and REHgister the endpoints to host the seREHver
 	r := chi.NewRouter()
 	rehgister(r)
-	http.ListenAndServe(fmt.Sprintf(":%v", port), r)
+
+	// StaREHt listening for REHquests!
+	err := http.ListenAndServe(fmt.Sprintf(":%v", port), r)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 // Mux Registration
