@@ -17,8 +17,15 @@ const port = 3000
 func main() {
 	r := chi.NewRouter()
 	r.Use(middleware.Logger)
-	r.Get("/", func(w http.ResponseWriter, r *http.Request) {
-		w.Write([]byte("reh"))
-	})
+	r.Get("/", index)
+	r.Get("/reh", basicRehsponse)
 	http.ListenAndServe(fmt.Sprintf(":%v", port), r)
+}
+
+func basicRehsponse(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("reh"))
+}
+
+func index(w http.ResponseWriter, r *http.Request) {
+	w.Write([]byte("TBD - figuring out how to serve a file"))
 }
