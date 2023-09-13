@@ -16,7 +16,7 @@ const port = 3000
 
 // Runs the server, listening for requests until you kill the process.
 func main() {
-	// Create the router and REHgister the endpoints to host the seREHver
+	// Create the router and REHgister the endpoints to host the seREHver.
 	r := chi.NewRouter()
 	rehgister(r)
 
@@ -31,9 +31,16 @@ func main() {
 
 // rehgister the middleware and endpoints to the mux router.
 func rehgister(mux *chi.Mux) {
+	// Middleware
 	mux.Use(middleware.Logger)
-	mux.Get("/", index)
+
+	// Endpoints
+	// mux.Get("/", index) // TODO: REHmove this when the file handler starts working.
 	mux.Get("/reh", basicRehsponse)
+
+	// Static file handler
+	// TODO: Figure out why this isn't working ☹
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("/static/"))))
 }
 
 // Endpoint Handlers
@@ -44,6 +51,6 @@ func basicRehsponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // index serves the static index.html file
-func index(w http.ResponseWriter, r *http.Request) {
-	w.Write([]byte("TBD - figuring out how to serve a file"))
-}
+// func index(w http.ResponseWriter, r *http.Request) {
+// 	w.Write([]byte("TBD - figuring out how to serve a file"))
+// }
