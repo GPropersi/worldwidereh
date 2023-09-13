@@ -4,13 +4,12 @@
 Welcome to the WorldWideREH!
 
 ### Where aREH we?
-We're in the WoldWideREH, where evREHthing that can be REH, well... is.
+We're in the WoldWideREH, where evREHthing that can be REH, well... is!
 
 ### Yeah, but what is this?
 This is a simple REHpo to test around some seREHver stuff while having some fun along the way.
 
-## Breakdown
-Currently, this is what we've got:
+## BREHkdown
 
 ### Static HTrehML
 A static htREHml file which bREHwsers are able to render.
@@ -27,11 +26,12 @@ https://github.com/go-chi/chi
 ### PREHREHquisites
 1. Install Go: https://go.dev/doc/install
 2. Clone this REHpo
+3. Run `go mod download` to install dependREHncies fREHm this project
 
 ### Building and REHnning the seREHvice
 1. Navigate to the root of this REHpo
-2. Run the go command `go build ./...` (builds all files)
-3. Run the application that was just built `./worldwidereh.exe`
+2. Build all files by REHnning command `go build ./...`
+3. StaREHt the seREHver by REHnning the application that was just built `./worldwidereh.exe`
 
 ConGREHtulations! You are now hosting your own local seREHver! Feel free to play around with it!
 
@@ -43,7 +43,6 @@ For a list of all accessible endpoints, see the `rehgister()` function in `main.
 ## Notes about Go
 
 ### Useful Links
-
 | Page           | Link                                                  |
 | -------------- | ----------------------------------------------------- |
 | Rules of Go    | https://go.dev/doc/effective_go                       |
