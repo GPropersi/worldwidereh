@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Rainbow Reh</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            background-color: black;
+            overflow: hidden;
+            transition: background-color 0.5s ease;
+        }
+
+        #reh-text {
+            font-size: 3rem;
+            color: limegreen;
+            cursor: pointer;
+        }
+
+        .rainbow-background {
+            animation: rainbow 2s linear infinite;
+        }
+
+        @keyframes rainbow {
+            0% {
+                background: repeating-linear-gradient(-45deg, violet, indigo, blue, green, yellow, orange, red);
+            }
+
+            100% {
+                background: repeating-linear-gradient(-45deg, red, orange, yellow, green, blue, indigo, violet);
+            }
+        }
+    </style>
+</head>
+
+<body>
+    <div id="reh-text">Reh</div>
+
+    <script>
+        const rehText = document.getElementById('reh-text');
+
+        function toggleRainbowBackground() {
+            document.body.classList.toggle('rainbow-background');
+        }
+
+        if ('ontouchstart' in window) {
+            // User is on a touch device (mobile)
+            rehText.addEventListener('touchstart', toggleRainbowBackground);
+        } else {
+            // User is on a non-touch device (desktop)
+            rehText.addEventListener('mouseenter', toggleRainbowBackground);
+            rehText.addEventListener('mouseleave', toggleRainbowBackground);
+        }
+    </script>
+</body>
+
+</html>
