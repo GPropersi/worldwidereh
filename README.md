@@ -28,8 +28,7 @@ https://github.com/go-chi/chi
 
 ## Building and REHnning the seREHvice
 1. Navigate to the root of this REHpo
-2. Build all files by REHnning command `go build ./...`
-3. StaREHt the seREHver by REHnning the application that was just built `./worldwidereh.exe`
+2. Build and staREHt the seREHver by REHnning the application that was just built `go run main.go`
 
 ConGREHtulations! You are now hosting your own local seREHver! Feel free to play around with it!
 
