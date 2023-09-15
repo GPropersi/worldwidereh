@@ -1,7 +1,9 @@
 package main
 
 import (
+	"embed"
 	"fmt"
+	"io/fs"
 	"log"
 	"net/http"
 
@@ -13,6 +15,9 @@ import (
 // Port 3000 is often used for web development, especially for running web applications.
 // If the web application needs to be accessible to the internet, you will need to open port 3000.
 const port = 3000
+
+//go:embed static/*
+var content embed.FS
 
 // Runs the server, listening for requests until you kill the process.
 func main() {
@@ -36,7 +41,11 @@ func rehgister(mux *chi.Mux) {
 
 	// Static file handler
 	// TODO: Figure out why this isn't working ☹
-	mux.Handle("/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+	var contentFS, err = fs.Sub(content, "static")
+	if err != nil {
+		log.Println(err)
+	}
+	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.FS(contentFS))))
 
 	// Endpoints
 	//mux.Get("/", index) // TODO: REHmove this when the file handler starts working.
