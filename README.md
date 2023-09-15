@@ -144,10 +144,12 @@ When receiving a request from the internet, it'll basically say "Go to
 this `address:port` and execute this command at this location in the service.
 
 #### Common commands
-- GET: Retrieve data from a server
-- POST: Create new data on a server
-- PUT: Update existing data on a server
-- DELETE: Remove existing data from a server
+| Command    | Use Case                           |
+| ---------- | ---------------------------------- |
+| **GET**    | Retrieve data from a server        |
+| **POST**   | Create new data on a server        |
+| **PUT**    | Update existing data on a server   |
+| **DELETE** | Remove existing data from a server |
 
 #### Example Request
 `GET worldwidereh.com/reh` -> Translates to :`GET 192.168.420.69:8080/reh`
