@@ -34,13 +34,13 @@ func rehgister(mux *chi.Mux) {
 	// Middleware
 	mux.Use(middleware.Logger)
 
-	// Endpoints
-	// mux.Get("/", index) // TODO: REHmove this when the file handler starts working.
-	mux.Get("/reh", basicRehsponse)
-
 	// Static file handler
 	// TODO: Figure out why this isn't working ☹
-	mux.Handle("/static/", http.StripPrefix("/static/", http.FileServer(http.Dir("/static/"))))
+	mux.Handle("/", http.StripPrefix("/static/", http.FileServer(http.Dir("./static"))))
+
+	// Endpoints
+	//mux.Get("/", index) // TODO: REHmove this when the file handler starts working.
+	mux.Get("/reh", basicRehsponse)
 }
 
 // Endpoint Handlers
@@ -51,6 +51,6 @@ func basicRehsponse(w http.ResponseWriter, r *http.Request) {
 }
 
 // index serves the static index.html file
-// func index(w http.ResponseWriter, r *http.Request) {
-// 	w.Write([]byte("TBD - figuring out how to serve a file"))
-// }
+func index(w http.ResponseWriter, r *http.Request) {
+	http.ServeFile(w, r, "/static/index.html")
+}
