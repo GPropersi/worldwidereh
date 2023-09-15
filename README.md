@@ -144,12 +144,12 @@ When receiving a request from the internet, it'll basically say "Go to
 this `address:port` and execute this command at this location in the service.
 
 #### Common commands
-| Command    | Use Case                           |
-| ---------- | ---------------------------------- |
-| **GET**    | Retrieve data from a server        |
-| **POST**   | Create new data on a server        |
-| **PUT**    | Update existing data on a server   |
-| **DELETE** | Remove existing data from a server |
+| Command | Use Case                           |
+| ------- | ---------------------------------- |
+| GET     | Retrieve data from a server        |
+| POST    | Create new data on a server        |
+| PUT     | Update existing data on a server   |
+| DELETE  | Remove existing data from a server |
 
 #### Example Request
 `GET worldwidereh.com/reh` -> Translates to :`GET 192.168.420.69:8080/reh`
@@ -194,7 +194,7 @@ register(mux *chi.Mux) {
     // These execute before the endpoint handlers do
     mux.Use(middleware.Logger)                                      // Log all requests (built in to serve everything below and including "/" root)
     mux.Use(middleware.BasicAuth("/", mapOfUserCredentials))        // Basic user/pass auth to all requests
-	mux.Use(middleware.BasicAuth("/admin", mapOfAdminCredentials))  // Basic auth for requests to endpoints in the "/admin" path
+    mux.Use(middleware.BasicAuth("/admin", mapOfAdminCredentials))  // Basic auth for requests to endpoints in the "/admin" path
 
     // This executes when a request is received at the "/reh" endpoint
     // We must share the power of REH with all who desire!
