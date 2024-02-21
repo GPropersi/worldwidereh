@@ -4,6 +4,18 @@
 # Created by https://www.toptal.com/developers/gitignore/api/go,visualstudiocode,windows,macos,linux
 # Edit at https://www.toptal.com/developers/gitignore?templates=go,visualstudiocode,windows,macos,linux
 
+### Java ###
+
+# Gradle
+.gradle
+**/build/
+!src/**/build/
+gradle-app.setting
+!gradle-wrapper.jar
+
+# IntelliJ Idea
+*.idea/
+
 ### Go ###
 # If you prefer the allow list template instead of the deny list, see community template:
 # https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
