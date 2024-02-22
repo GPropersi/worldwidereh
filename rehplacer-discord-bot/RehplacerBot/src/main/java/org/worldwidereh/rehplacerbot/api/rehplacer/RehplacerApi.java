@@ -4,6 +4,7 @@ import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestTemplate;
+import org.springframework.web.client.UnknownContentTypeException;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -34,22 +35,31 @@ public final class RehplacerApi {
         HttpHeaders headers = buildHeaders();
         HttpEntity<Map<String, String>> httpEntity = buildEntity(headers, body);
 
-        ResponseEntity<RehFromApiDto> response = restTemplate.exchange(
-                REHPLACER_API_URL,
-                HttpMethod.POST,
-                httpEntity,
-                RehFromApiDto.class);
+        try {
+            ResponseEntity<RehFromApiDto> response = restTemplate.exchange(
+                    REHPLACER_API_URL,
+                    HttpMethod.POST,
+                    httpEntity,
+                    RehFromApiDto.class);
 
-        int statusCode = response.getStatusCode().value();
+            int statusCode = response.getStatusCode().value();
 
-        if (statusCode == 200 && response.getBody() != null) {
-            return new RehToDiscordDto(response.getBody().rehsponseKey(), true);
+            switch (statusCode) {
+                case 200:
+                    if (response.getBody() != null) {
+                        return new RehToDiscordDto(response.getBody().rehsponseKey(), true);
+                    } break;
 
-        } else if (statusCode == 429) {
-            return new RehToDiscordDto(TOO_MANY_REH, false);
+                case 429:
+                    return new RehToDiscordDto(TOO_MANY_REH, false);
+            }
+
+            return new RehToDiscordDto (GENERAL_ERROR_MESSAGE, false);
+
+        } catch (UnknownContentTypeException e) {
+            // Handle an invalid body sent from microservice that doesn't conform to DTO
+            return new RehToDiscordDto (GENERAL_ERROR_MESSAGE, false);
         }
-
-        return new RehToDiscordDto (GENERAL_ERROR_MESSAGE, false);
     }
 
     private HttpHeaders buildHeaders() {
