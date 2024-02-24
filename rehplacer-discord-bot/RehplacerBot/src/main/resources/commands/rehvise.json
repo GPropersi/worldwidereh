@@ -1,0 +1,11 @@
+{
+  "name": "rehvise",
+  "description": "Rehvise! Make it Rehmarkable!",
+  "options": [
+    {
+      "name": "phrehse",
+      "description": "The phREHse to REHvise",
+      "type": 3,
+      "required": true
+    }]
+}
