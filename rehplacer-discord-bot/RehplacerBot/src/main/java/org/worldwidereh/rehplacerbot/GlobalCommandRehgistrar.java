@@ -36,6 +36,7 @@ public final class GlobalCommandRehgistrar implements ApplicationRunner {
             ApplicationCommandRequest request = d4jMapper.getObjectMapper()
                     .readValue(resource.getInputStream(), ApplicationCommandRequest.class);
 
+            System.out.println("Adding " +request.name());
             commands.add(request);
         }
 
