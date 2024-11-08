@@ -3,10 +3,10 @@ package org.worldwidereh.rehplacerbot.api.rehplacer;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.http.*;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.client.UnknownContentTypeException;
 
-import java.util.HashMap;
 import java.util.Map;
 
 
@@ -14,7 +14,7 @@ import java.util.Map;
 public final class RehplacerApi {
 
     private final RestTemplate restTemplate;
-    private final String REHPLACER_API_URL = "https://rehplacer.propersi.me";
+    private final String REHPLACER_API_URL = "https://rehplacer.propersi.app";
     private final String CF_CLIENT_SECRET = "CF-Access-Client-Secret";
     private final String CF_CLIENT_ID = "CF-Access-Client-Id";
     private final String BODY_KEY = "rehgularText";
@@ -48,17 +48,21 @@ public final class RehplacerApi {
                 case 200:
                     if (response.getBody() != null) {
                         return new RehToDiscordDto(response.getBody().rehsponseKey(), true);
-                    } break;
+                    }
+                    break;
 
                 case 429:
                     return new RehToDiscordDto(TOO_MANY_REH, false);
             }
 
-            return new RehToDiscordDto (GENERAL_ERROR_MESSAGE, false);
+            return new RehToDiscordDto(GENERAL_ERROR_MESSAGE, false);
 
         } catch (UnknownContentTypeException e) {
             // Handle an invalid body sent from microservice that doesn't conform to DTO
-            return new RehToDiscordDto (GENERAL_ERROR_MESSAGE, false);
+            return new RehToDiscordDto(GENERAL_ERROR_MESSAGE, false);
+        } catch (ResourceAccessException e) {
+            // Handle unknown host
+            return new RehToDiscordDto(String.format("Unable to hit the provided host: %s", REHPLACER_API_URL), false);
         }
     }
 
