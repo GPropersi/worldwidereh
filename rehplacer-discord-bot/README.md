@@ -3,9 +3,11 @@ Welcome to the home of the Rehplacer Discord Bot!
 
 ## What does this do?
 
-Simple - this bot takes a command `/rehplace` and reads your text in the `phrehse` argument.
+Simple - this bot takes a command `/rehplace` or `/rehvise` and reads your text in the `phrehse` argument.
 
 The text is then modified where every `r` followed by a vowel, is replaced with `REH`.
+
+It also happily reports status on the MinecREHft channel used.
 
 ## How does it do it?
 

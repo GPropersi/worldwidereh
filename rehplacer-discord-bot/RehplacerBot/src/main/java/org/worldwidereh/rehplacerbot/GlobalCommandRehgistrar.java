@@ -40,12 +40,12 @@ public final class GlobalCommandRehgistrar implements ApplicationRunner {
             commands.add(request);
         }
 
-        final ApplicationService applicationService = client.getApplicationService();
-        final Optional<Long> applicationID = client.getApplicationId().blockOptional();
-        applicationID.ifPresent(appID -> applicationService.bulkOverwriteGlobalApplicationCommand(appID, commands)
-                .doOnNext(ignore -> System.out.println("Registered global commands"))
-                .doOnError(Throwable::printStackTrace)
-                .subscribe());
+        client.getApplicationId()
+            .flatMapMany(appID -> client.getApplicationService()
+                .bulkOverwriteGlobalApplicationCommand(appID, commands))
+            .collectList() // Wait for all commands to finish
+            .doOnSuccess(result -> System.out.println("Registered " + result.size() + " global commands"))
+            .block(); // Block here so Spring knows startup isn't "done" until this finishes
     }
 
 
