@@ -1,0 +1,23 @@
+version: '3.8'
+
+services:
+  rehplacer-bot:
+    build: .
+    image: rehplacer-bot:latest
+    container_name: rehplacer-bot
+    restart: unless-stopped
+    ports:
+      - "9980:9980"
+    environment:
+      - DISCORD_TOKEN=${DISCORD_TOKEN}
+      - CF_CLIENT_ID=${CF_CLIENT_ID}
+      - CF_CLIENT_SECRET=${CF_CLIENT_SECRET}
+      # JVM Memory Tuning for 4GB Pi
+      - JAVA_OPTS=-Xms128m -Xmx512m -XX:+UseSerialGC -XX:MaxRAMPercentage=25.0
+    logging:
+      driver: "journald"
+      options:
+        tag: "discord-bot-rehplacer"
+    volumes:
+      - ./logs:/app/logs
+      - ./commands:/app/commands:ro  # Read-only access to your JSONs
