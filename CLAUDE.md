@@ -28,4 +28,4 @@ the static site itself.
   | Lint / format | n/a |
 - **GitHub project board:** n/a
 - **Issue labels:** resolve at runtime via `gh label list --repo GPropersi/worldwidereh` (do not invent labels)
-- **PR reviewer:** n/a
+- **PR reviewer:** `GPropersi`
