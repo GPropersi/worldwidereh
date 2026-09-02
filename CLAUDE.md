@@ -16,7 +16,7 @@ the static site itself.
 - **Plans/reviews layout:** n/a (no `plans/` directory established)
 - **Bot identity:** `gpropersi-claude[bot]` `141576524+gpropersi-claude[bot]@users.noreply.github.com`  <!-- shared consolidated bot; installed on this repo -->
 - **Bot push script:** `~/code/.claude/scripts/gh-app-push.sh` (central, repo-agnostic; derives the repo from `origin`, pushes as the shared bot)
-- **Token generator:** `~/.claude/generate-gh-token.sh` (shared consolidated `gpropersi-claude` GitHub App; one generator serves every repo — auto-resolves the installation from the repo's owner. Key at `~/.claude/u4i-app.pem`, outside every repo)
+- **Token generator:** `~/code/.claude/scripts/generate-gh-token.sh` (tracked in the stronghold — the shared consolidated `gpropersi-claude` App; one generator serves every repo, auto-resolves the installation from the repo's owner. Only the private key `~/.claude/u4i-app.pem` lives outside git)
 - **Container runtime:** n/a for the static site; the `rehplacer-discord-bot/RehplacerBot/` subproject has its own `docker-compose.yml` (`docker compose up --build` within that dir)
 - **App URL (Playwright MCP):** n/a (static `index.html` — open the file directly or serve with any static server)
 - **Test login:** n/a
