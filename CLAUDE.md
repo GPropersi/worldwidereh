@@ -13,7 +13,8 @@ the static site itself.
 
 - **Repo slug:** `GPropersi/worldwidereh`
 - **Default branch:** `main`
-- **Plans/reviews layout:** n/a (no `plans/` directory established)
+- **Plans store (central):** `~/code/plans/worldwidereh/{open,completed,research}/<topic>/` (no in-repo `plans/` directory; see `~/code/CLAUDE.md` "Central Plans Store")
+- **Plans bucket:** `worldwidereh`
 - **Bot identity:** `gpropersi-claude[bot]` `141576524+gpropersi-claude[bot]@users.noreply.github.com`  <!-- shared consolidated bot; installed on this repo -->
 - **Bot push script:** `~/code/.claude/scripts/gh-app-push.sh` (central, repo-agnostic; derives the repo from `origin`, pushes as the shared bot)
 - **Token generator:** `~/code/.claude/scripts/generate-gh-token.sh` (tracked in the stronghold — the shared consolidated `gpropersi-claude` App; one generator serves every repo, auto-resolves the installation from the repo's owner. Only the private key `~/.claude/u4i-app.pem` lives outside git)
@@ -24,8 +25,15 @@ the static site itself.
   | Purpose | Command |
   |---|---|
   | Static site build | n/a (plain `index.html`) |
-  | Discord bot build/test | `./gradlew build` (in `rehplacer-discord-bot/RehplacerBot/`) |
-  | Lint / format | n/a |
+  | Discord bot build/test | `make test` (wraps `./gradlew build` in `rehplacer-discord-bot/RehplacerBot/`) |
+  | Lint / format | `make lint` (wraps `./gradlew check -x test`; no formatter) |
 - **GitHub project board:** n/a
 - **Issue labels:** resolve at runtime via `gh label list --repo GPropersi/worldwidereh` (do not invent labels)
-- **PR reviewer:** n/a
+- **PR reviewer:** `GPropersi`
+- **Push gate:** (suites a push must pass; first matching row wins per changed path, all matched suites run sequentially)
+  | Paths (space-separated globs) | Command |
+  | --- | --- |
+  | `**/*.md LICENSE .gitignore .gitattributes .claude/**` | na docs and repo metadata only, no code or build input |
+  | `index.html` | na static page with no build tooling or tests |
+  | `CLAUDE.md` | na agent guidance only, no code or build input |
+  | `Makefile rehplacer-discord-bot/**` | `make test` |
