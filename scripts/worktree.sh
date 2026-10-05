@@ -282,38 +282,41 @@ ensure_bind_dirs() {
 
 wt_mtime() { stat -c %Y "$1" 2> /dev/null || stat -f %m "$1"; }
 
+# lock_held <dir> [<by-suffix>]: report the lock as held and return 1.
+lock_held() {
+  wt_err "slot lock held${2:+ $2} ($1)"
+  return 1
+}
+
+# lock_take <dir>: record ourselves as the owner and install the release trap.
+lock_take() {
+  printf '%s\n' "$$" > "$1/pid"
+  WT_LOCK_DIR="$1"
+  WT_LOCK_HELD=1
+  trap release_lock EXIT
+}
+
 # acquire_lock / release_lock: mkdir lock in the git common dir with a pid file. A dead pid is
 # reclaimed; a pid-less lock is reclaimed once older than 5 s (WT_LOCK_NOW is the time seam).
+# A failed stat is treated as stale: if the dir really vanished the mv loses and the lock is
+# reported held (the caller may simply retry).
 # Note: on success this installs an EXIT trap that REPLACES any EXIT trap the caller had set.
 acquire_lock() {
-  local common dir pid="" now mt age stale cur held
+  local common dir pid="" now mt stale cur held
   common="$(wt_common_dir)" || return 1
   dir="$common/worldwidereh-worktree-slot.lock"
   if ! mkdir "$dir" 2> /dev/null; then
     if [ -f "$dir/pid" ]; then pid="$(cat "$dir/pid" 2> /dev/null || true)"; fi
     if [ -n "$pid" ]; then
       if kill -0 "$pid" 2> /dev/null; then
-        wt_err "slot lock held by pid $pid ($dir)"
+        lock_held "$dir" "by pid $pid"
         return 1
       fi
     else
+      # A failed stat (the lock vanished) counts as stale: fall through to the mv reclaim.
       now="${WT_LOCK_NOW:-$(date +%s)}"
-      if mt="$(wt_mtime "$dir")"; then
-        age=$((now - mt))
-        if [ "$age" -le 5 ]; then
-          wt_err "slot lock held ($dir)"
-          return 1
-        fi
-      else
-        # The lock vanished between mkdir and stat: retry the mkdir once.
-        if mkdir "$dir" 2> /dev/null; then
-          printf '%s\n' "$$" > "$dir/pid"
-          WT_LOCK_DIR="$dir"
-          WT_LOCK_HELD=1
-          trap release_lock EXIT
-          return 0
-        fi
-        wt_err "slot lock held ($dir)"
+      if mt="$(wt_mtime "$dir")" && [ $((now - mt)) -le 5 ]; then
+        lock_held "$dir"
         return 1
       fi
     fi
@@ -322,7 +325,7 @@ acquire_lock() {
     if [ -n "${WT_LOCK_PRE_MV:-}" ]; then "$WT_LOCK_PRE_MV" "$dir"; fi
     stale="$dir.stale-$$"
     if ! mv "$dir" "$stale" 2> /dev/null; then
-      wt_err "slot lock held ($dir)"
+      lock_held "$dir"
       return 1
     fi
     # Re-check: if the dir we moved now names a live pid other than the one we judged stale, a
@@ -342,19 +345,16 @@ acquire_lock() {
     if [ -n "$held" ]; then
       if [ ! -e "$dir" ]; then mv "$stale" "$dir" 2> /dev/null || true; fi
       rm -rf "$stale"
-      wt_err "slot lock held${held% } ($dir)"
+      lock_held "$dir" "${held# }"
       return 1
     fi
     rm -rf "$stale"
     if ! mkdir "$dir" 2> /dev/null; then
-      wt_err "slot lock held ($dir)"
+      lock_held "$dir"
       return 1
     fi
   fi
-  printf '%s\n' "$$" > "$dir/pid"
-  WT_LOCK_DIR="$dir"
-  WT_LOCK_HELD=1
-  trap release_lock EXIT
+  lock_take "$dir"
 }
 release_lock() {
   if [ "$WT_LOCK_HELD" = 1 ] && [ -n "$WT_LOCK_DIR" ]; then

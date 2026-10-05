@@ -628,7 +628,7 @@ t_lock_second_acquire_held() {
   local err
   err="$(acquire_lock 2>&1)"
   assert_eq 1 $? "second acquire fails"
-  assert_contains "$err" "slot lock held" "message"
+  assert_contains "$err" "slot lock held by pid $$" "message names the owner"
   assert_eq "yes" "$([ -d "$(lock_dir)" ] && echo yes || echo no)" "first lock intact"
 }
 t_lock_dead_pid_reclaimed() {
@@ -715,7 +715,10 @@ t_lock_recheck_after_mv_restores_young_pidless_replacement() {
   err="$(acquire_lock 2>&1)"
   assert_eq 1 $? "young pid-less replacement: held"
   assert_contains "$err" "slot lock held" "message"
+  case "$err" in *"by pid"*) assert_eq "no by-pid suffix" "$err" "pid-less message has no suffix" ;; esac
   assert_eq "yes" "$([ -d "$d" ] && echo yes || echo no)" "replacement's lock restored"
+  assert_eq "no" "$([ -e "$d/pid" ] && echo yes || echo no)" "restored dir is still pid-less"
+  assert_eq "" "$(ls -d "$d".stale-* 2> /dev/null)" "no stale dir left behind"
   unset WT_LOCK_PRE_MV
 }
 t_lock_pidless_young_held() {
@@ -728,6 +731,36 @@ t_lock_pidless_young_held() {
   err="$(acquire_lock 2>&1)"
   assert_eq 1 $? "age 4s held"
   assert_contains "$err" "slot lock held" "message"
+  case "$err" in *"by pid"*) assert_eq "no by-pid suffix" "$err" "pid-less message has no suffix" ;; esac
+}
+t_lock_stat_failure_treated_as_stale() {
+  fx_new
+  local d
+  d="$(lock_dir)"
+  mkdir "$d"
+  # shellcheck disable=SC2329 # invoked by acquire_lock, overriding the sourced helper
+  wt_mtime() { return 1; }
+  acquire_lock
+  assert_eq 0 $? "failed stat falls through to the mv reclaim"
+  assert_eq "$$" "$(cat "$d/pid")" "reclaimed lock's pid file is ours"
+  assert_eq "" "$(ls -d "$d".stale-* 2> /dev/null)" "no stale dir left behind"
+}
+lock_swap_vanish() { rm -rf "$1"; }
+t_lock_vanished_before_mv_reports_held() {
+  fx_new
+  local d dead err
+  d="$(lock_dir)"
+  true &
+  dead=$!
+  wait "$dead"
+  mkdir "$d"
+  echo "$dead" > "$d/pid"
+  export WT_LOCK_PRE_MV=lock_swap_vanish
+  err="$(acquire_lock 2>&1)"
+  assert_eq 1 $? "mv loser reports held"
+  assert_contains "$err" "slot lock held" "message"
+  assert_eq "" "$(ls -d "$d".stale-* 2> /dev/null)" "no stale dir left behind"
+  unset WT_LOCK_PRE_MV
 }
 
 t_rm_project_file_missing() {
