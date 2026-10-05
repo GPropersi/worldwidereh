@@ -39,7 +39,7 @@ the static site itself.
 
   Worktrees (ports, isolation, the singleton `make up` restriction, removal): see `docs/worktrees.md`.
 - **Push gate:** (suites a push must pass; first matching row wins per changed path, all matched suites run sequentially)
-  | Paths (space-separated globs)                  | Command                 |
+  | Paths (space-separated globs)                   | Command                 |
   | ----------------------------------------------- | ----------------------- |
   | `rehplacer-discord-bot/**`                      | `make test`             |
   | `scripts/** Makefile`                           | `make scripts-test`     |
