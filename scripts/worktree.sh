@@ -91,7 +91,7 @@ wt_project_exists() {
 }
 
 # wt_port_busy <port>: busy when listed in WT_BUSY_PORTS (when that is set it is the only
-# source), else when docker publishes it, else when something accepts on IPv4 loopback.
+# source), else when docker publishes it, else when something accepts on IPv4 or IPv6 loopback.
 wt_port_busy() {
   local port="$1" w ids
   if [ -n "${WT_BUSY_PORTS+x}" ]; then
@@ -103,7 +103,10 @@ wt_port_busy() {
   if ids="$(docker ps --filter "publish=$port" -q 2> /dev/null)"; then
     if [ -n "$ids" ]; then return 0; fi
   fi
-  (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null
+  # Probe both loopbacks: a listener bound to ::1 only is invisible to the IPv4 probe. A host
+  # without IPv6 just fails the second connect, which reads as free.
+  if (exec 3<> "/dev/tcp/127.0.0.1/$port") 2> /dev/null; then return 0; fi
+  (exec 3<> "/dev/tcp/::1/$port") 2> /dev/null
 }
 
 # claimed_slots <primary>: BOT_SLOT of every sibling worktree (sed, never sourced), one per line.
@@ -283,7 +286,7 @@ wt_mtime() { stat -c %Y "$1" 2> /dev/null || stat -f %m "$1"; }
 # reclaimed; a pid-less lock is reclaimed once older than 5 s (WT_LOCK_NOW is the time seam).
 # Note: on success this installs an EXIT trap that REPLACES any EXIT trap the caller had set.
 acquire_lock() {
-  local common dir pid="" now mt age stale cur
+  local common dir pid="" now mt age stale cur held
   common="$(wt_common_dir)" || return 1
   dir="$common/worldwidereh-worktree-slot.lock"
   if ! mkdir "$dir" 2> /dev/null; then
@@ -326,10 +329,20 @@ acquire_lock() {
     # concurrent acquirer replaced it before our mv. Put it back (best effort) and report held.
     cur=""
     if [ -f "$stale/pid" ]; then cur="$(cat "$stale/pid" 2> /dev/null || true)"; fi
-    if [ -n "$cur" ] && [ "$cur" != "$pid" ] && kill -0 "$cur" 2> /dev/null; then
+    # A young pid-less dir is a replacement acquirer that has not written its pid yet.
+    # Residual (best effort, documented): the lock path is briefly absent between our mv and
+    # the restore, so a third acquirer can still win that window.
+    held=""
+    if [ -n "$cur" ]; then
+      if [ "$cur" != "$pid" ] && kill -0 "$cur" 2> /dev/null; then held=" by pid $cur"; fi
+    else
+      now="${WT_LOCK_NOW:-$(date +%s)}"
+      if mt="$(wt_mtime "$stale")" && [ $((now - mt)) -le 5 ]; then held=" "; fi
+    fi
+    if [ -n "$held" ]; then
       if [ ! -e "$dir" ]; then mv "$stale" "$dir" 2> /dev/null || true; fi
       rm -rf "$stale"
-      wt_err "slot lock held by pid $cur ($dir)"
+      wt_err "slot lock held${held% } ($dir)"
       return 1
     fi
     rm -rf "$stale"

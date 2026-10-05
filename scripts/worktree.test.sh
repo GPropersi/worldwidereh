@@ -11,7 +11,7 @@
 
 # Make/CI leak these in; every case that needs one sets it itself.
 unset COMPOSE_PROJECT_NAME BOT_PORT BOT_CONTAINER BOT_IMAGE MAKELEVEL MAKEFLAGS MFLAGS
-unset WT_BUSY_PORTS WT_LOCK_NOW WT_LOCK_PRE_MVWT_NO_JQ WT_SKIP_BUILD WT_STUB_LS WT_STUB_LOG WT_STUB_FAIL WT_STUB_PS WT_STUB_RC WT_STUB_FAIL_IMAGE WT_MAKE_LOG WT_MAKE_RC WT_DUMP WT_NAME WT_BRANCH WT_BASE GIT_DIR GIT_WORK_TREE
+unset WT_BUSY_PORTS WT_LOCK_NOW WT_LOCK_PRE_MV WT_NO_JQ WT_SKIP_BUILD WT_STUB_LS WT_STUB_LOG WT_STUB_FAIL WT_STUB_PS WT_STUB_RC WT_STUB_FAIL_IMAGE WT_MAKE_LOG WT_MAKE_RC WT_DUMP WT_NAME WT_BRANCH WT_BASE GIT_DIR GIT_WORK_TREE
 
 TEST_FILE="${BASH_SOURCE[0]}"
 TEST_DIR="$(cd "$(dirname "$TEST_FILE")" && pwd)"
@@ -436,6 +436,35 @@ time.sleep(60)' > "$pf" &
   wt_port_busy "$port"
   assert_eq 1 $? "free after close"
 }
+t_ports_live_probe_ipv6() {
+  command -v python3 > /dev/null 2>&1 || { skip "python3 not installed (no listener)"; return 0; }
+  export WT_STUB_FAIL=1
+  local pf="$ROOT/probe6.$$" port pid i
+  python3 -c 'import socket,time
+try:
+    s=socket.socket(socket.AF_INET6)
+    s.bind(("::1",0))
+except OSError:
+    print("noipv6",flush=True)
+    raise SystemExit
+s.listen(1)
+print(s.getsockname()[1],flush=True)
+time.sleep(60)' > "$pf" &
+  pid=$!
+  for i in $(seq 1 100); do [ -s "$pf" ] && break; sleep 0.05; done
+  port="$(cat "$pf")"
+  if [ "$port" = "noipv6" ]; then
+    wait "$pid" 2> /dev/null
+    skip "no IPv6 loopback on this host"
+    return 0
+  fi
+  wt_port_busy "$port"
+  assert_eq 0 $? "busy while listening on ::1 only"
+  kill "$pid" 2> /dev/null
+  wait "$pid" 2> /dev/null
+  wt_port_busy "$port"
+  assert_eq 1 $? "free after close"
+}
 t_ports_docker_publish_filter() {
   export WT_STUB_PS="abc123"
   export WT_STUB_LOG="$ROOT/docker-ps.$$.log"
@@ -667,7 +696,26 @@ t_lock_recheck_after_mv_restores_live_owner() {
   assert_eq 1 $? "live owner appeared before mv: held"
   assert_contains "$err" "slot lock held by pid $LOCK_LIVE_PID" "message"
   assert_eq "$LOCK_LIVE_PID" "$(cat "$d/pid" 2> /dev/null)" "live owner's lock restored"
+  assert_eq "" "$(ls -d "$d".stale-* 2> /dev/null)" "no stale dir left behind"
   kill "$LOCK_LIVE_PID" 2> /dev/null || true
+  unset WT_LOCK_PRE_MV
+}
+lock_swap_pidless() { rm -rf "$1/pid"; }
+t_lock_recheck_after_mv_restores_young_pidless_replacement() {
+  fx_new
+  local d dead err
+  d="$(lock_dir)"
+  true &
+  dead=$!
+  wait "$dead"
+  mkdir "$d"
+  echo "$dead" > "$d/pid"
+  # The seam leaves a fresh pid-less dir, as a replacement acquirer would before writing its pid.
+  export WT_LOCK_PRE_MV=lock_swap_pidless
+  err="$(acquire_lock 2>&1)"
+  assert_eq 1 $? "young pid-less replacement: held"
+  assert_contains "$err" "slot lock held" "message"
+  assert_eq "yes" "$([ -d "$d" ] && echo yes || echo no)" "replacement's lock restored"
   unset WT_LOCK_PRE_MV
 }
 t_lock_pidless_young_held() {
