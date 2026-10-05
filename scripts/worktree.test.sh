@@ -11,7 +11,7 @@
 
 # Make/CI leak these in; every case that needs one sets it itself.
 unset COMPOSE_PROJECT_NAME BOT_PORT BOT_CONTAINER BOT_IMAGE MAKELEVEL MAKEFLAGS MFLAGS
-unset WT_BUSY_PORTS WT_LOCK_NOW WT_NO_JQ WT_SKIP_BUILD WT_STUB_LS WT_STUB_LOG WT_STUB_FAIL WT_STUB_PS WT_STUB_RC WT_STUB_FAIL_IMAGE WT_MAKE_LOG WT_MAKE_RC WT_DUMP WT_NAME WT_BRANCH WT_BASE GIT_DIR GIT_WORK_TREE
+unset WT_BUSY_PORTS WT_LOCK_NOW WT_LOCK_PRE_MVWT_NO_JQ WT_SKIP_BUILD WT_STUB_LS WT_STUB_LOG WT_STUB_FAIL WT_STUB_PS WT_STUB_RC WT_STUB_FAIL_IMAGE WT_MAKE_LOG WT_MAKE_RC WT_DUMP WT_NAME WT_BRANCH WT_BASE GIT_DIR GIT_WORK_TREE
 
 TEST_FILE="${BASH_SOURCE[0]}"
 TEST_DIR="$(cd "$(dirname "$TEST_FILE")" && pwd)"
@@ -649,6 +649,26 @@ t_lock_release_noop_when_not_held() {
   WT_LOCK_DIR="$d" WT_LOCK_HELD=1
   release_lock
   assert_eq "yes" "$([ -d "$d" ] && echo yes || echo no)" "kept when the pid file is not ours"
+}
+lock_swap_live_owner() { echo "$LOCK_LIVE_PID" > "$1/pid"; }
+t_lock_recheck_after_mv_restores_live_owner() {
+  fx_new
+  local d dead err
+  d="$(lock_dir)"
+  true &
+  dead=$!
+  wait "$dead"
+  mkdir "$d"
+  echo "$dead" > "$d/pid"
+  sleep 30 &
+  LOCK_LIVE_PID=$!
+  export WT_LOCK_PRE_MV=lock_swap_live_owner
+  err="$(acquire_lock 2>&1)"
+  assert_eq 1 $? "live owner appeared before mv: held"
+  assert_contains "$err" "slot lock held by pid $LOCK_LIVE_PID" "message"
+  assert_eq "$LOCK_LIVE_PID" "$(cat "$d/pid" 2> /dev/null)" "live owner's lock restored"
+  kill "$LOCK_LIVE_PID" 2> /dev/null || true
+  unset WT_LOCK_PRE_MV
 }
 t_lock_pidless_young_held() {
   fx_new

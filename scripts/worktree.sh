@@ -283,7 +283,7 @@ wt_mtime() { stat -c %Y "$1" 2> /dev/null || stat -f %m "$1"; }
 # reclaimed; a pid-less lock is reclaimed once older than 5 s (WT_LOCK_NOW is the time seam).
 # Note: on success this installs an EXIT trap that REPLACES any EXIT trap the caller had set.
 acquire_lock() {
-  local common dir pid="" now mt age stale
+  local common dir pid="" now mt age stale cur
   common="$(wt_common_dir)" || return 1
   dir="$common/worldwidereh-worktree-slot.lock"
   if ! mkdir "$dir" 2> /dev/null; then
@@ -315,9 +315,21 @@ acquire_lock() {
       fi
     fi
     # Atomic reclaim: whoever wins the mv owns the stale dir; the loser reports held.
+    # WT_LOCK_PRE_MV (test seam): a command run between the stale judgement and the mv.
+    if [ -n "${WT_LOCK_PRE_MV:-}" ]; then "$WT_LOCK_PRE_MV" "$dir"; fi
     stale="$dir.stale-$$"
     if ! mv "$dir" "$stale" 2> /dev/null; then
       wt_err "slot lock held ($dir)"
+      return 1
+    fi
+    # Re-check: if the dir we moved now names a live pid other than the one we judged stale, a
+    # concurrent acquirer replaced it before our mv. Put it back (best effort) and report held.
+    cur=""
+    if [ -f "$stale/pid" ]; then cur="$(cat "$stale/pid" 2> /dev/null || true)"; fi
+    if [ -n "$cur" ] && [ "$cur" != "$pid" ] && kill -0 "$cur" 2> /dev/null; then
+      if [ ! -e "$dir" ]; then mv "$stale" "$dir" 2> /dev/null || true; fi
+      rm -rf "$stale"
+      wt_err "slot lock held by pid $cur ($dir)"
       return 1
     fi
     rm -rf "$stale"
