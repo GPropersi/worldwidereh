@@ -130,3 +130,7 @@ $RECYCLE.BIN/
 *.lnk
 
 # End of https://www.toptal.com/developers/gitignore/api/go,visualstudiocode,windows,macos,linux
+
+# Claude worktrees and per-worktree runtime config
+.claude/worktrees/
+.worktree.env

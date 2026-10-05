@@ -3,11 +3,11 @@ version: '3.8'
 services:
   rehplacer-bot:
     build: .
-    image: rehplacer-bot:latest
-    container_name: rehplacer-bot
+    image: ${BOT_IMAGE:-rehplacer-bot:latest}
+    container_name: ${BOT_CONTAINER:-rehplacer-bot}
     restart: unless-stopped
     ports:
-      - "9980:9980"
+      - "${BOT_PORT:-9980}:9980"
     environment:
       - DISCORD_TOKEN=${DISCORD_TOKEN}
       - CF_CLIENT_ID=${CF_CLIENT_ID}

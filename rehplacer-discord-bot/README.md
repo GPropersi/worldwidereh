@@ -41,3 +41,11 @@ Once in the directory:
 > This wil output a JAR file in the `builds/libs` directory, which can also be used to run the bot.
 
 Have fun :).
+
+---
+
+## Worktrees
+
+The repo can be built in parallel git worktrees (`make worktree-new name=<slug>`); see [`docs/worktrees.md`](../docs/worktrees.md) for creation, ports, isolation and removal.
+
+Only one copy of the bot may run at a time because there is a single `DISCORD_TOKEN`. In a worktree the bot is started only through the wrapper, `~/code/.claude/scripts/wt-singleton.sh run <checkout> up`; a bare `make up` is denied. That wrapper and its hook exist only inside a Claude Code session on a machine with the stronghold. Anywhere else nothing enforces this, so run only one copy per `DISCORD_TOKEN` and `make down` the other checkout first.
