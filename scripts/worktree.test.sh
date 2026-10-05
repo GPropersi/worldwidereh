@@ -298,6 +298,14 @@ t_project_exists_jq_branch() {
   assert_eq 0 $? "exact present (jq)"
 }
 
+t_main_usage_rc2() {
+  local out rc
+  out="$(wt_main bogus 2>&1)"
+  rc=$?
+  assert_eq 2 "$rc" "rc"
+  assert_contains "$out" "usage: worktree.sh new|rm" "usage text"
+}
+
 t_default_branch_from_origin_head() {
   fx_new
   git push -q origin main:develop
@@ -989,6 +997,12 @@ t_make_quoting_roundtrip() {
   make_stubbed worktree-new name="'x y'"
   assert_eq "WT_NAME='x y'" "$(grep '^WT_NAME=' "$WT_DUMP.env")" "quoted value kept as typed"
 }
+t_make_base_quoting_roundtrip() {
+  mk_dir
+  make_stubbed worktree-new name=ok base="o'r z"
+  assert_eq 0 "$MK_RC" "rc ($(cat "$MD/make.out"))"
+  assert_eq "WT_BASE=o'r z" "$(grep '^WT_BASE=' "$WT_DUMP.env")" "base round-trips"
+}
 t_make_new_does_not_leak_identity() {
   mk_dir
   make_stubbed worktree-new name=ok
@@ -1013,6 +1027,21 @@ t_make_environment_beats_file() {
   out="$(cd "$MD" && COMPOSE_PROJECT_NAME=envp BOT_PORT=19002 "$REAL_MAKE" --no-print-directory worktree-ports)"
   assert_contains "$out" "COMPOSE_PROJECT_NAME=envp" "environment beats file"
   assert_contains "$out" "BOT_PORT=19002" "environment beats file"
+}
+t_make_defaults_without_env_file() {
+  mk_dir
+  local out
+  out="$(cd "$MD" && "$REAL_MAKE" --no-print-directory worktree-ports)"
+  assert_eq "BOT_PORT=9980
+COMPOSE_PROJECT_NAME=worldwidereh" "$out" "defaults, exact"
+}
+t_make_command_line_beats_all() {
+  mk_dir
+  printf 'COMPOSE_PROJECT_NAME=filep\nBOT_PORT=19001\n' > "$MD/.worktree.env"
+  local out
+  out="$(cd "$MD" && COMPOSE_PROJECT_NAME=envp BOT_PORT=19002 "$REAL_MAKE" --no-print-directory worktree-ports BOT_PORT=19003 COMPOSE_PROJECT_NAME=cmdp)"
+  assert_contains "$out" "BOT_PORT=19003" "command line beats environment and file"
+  assert_contains "$out" "COMPOSE_PROJECT_NAME=cmdp" "command line beats environment and file"
 }
 
 # ================= runner =================
