@@ -221,7 +221,10 @@ write_env() {
   local wt="$1" slug="$2" slot="$3" port="$4" primary tmp
   primary="$(wt_primary_root)" || return 1
   tmp="$(mktemp "$wt/.worktree.env.XXXXXX")" || return 1
-  chmod 600 "$tmp"
+  chmod 600 "$tmp" || {
+    rm -f "$tmp"
+    return 1
+  }
   if ! printf 'SLUG=%s\nPRIMARY_ROOT=%s\nIS_PRIMARY=0\nBOT_SLOT=%s\nCOMPOSE_PROJECT_NAME=%s\nBOT_PORT=%s\nBOT_CONTAINER=%s\nBOT_IMAGE=%s\n' \
     "$slug" "$primary" "$slot" "$WT_PROJECT_PREFIX-$slug" "$port" "$WT_PROJECT_PREFIX-$slug-bot" "$WT_PROJECT_PREFIX-$slug:local" > "$tmp"; then
     rm -f "$tmp"
@@ -238,10 +241,10 @@ ensure_excludes() {
   local common ex
   common="$(wt_common_dir)" || return 1
   ex="$common/info/exclude"
-  mkdir -p "$common/info"
+  mkdir -p "$common/info" || return 1
   if [ -f "$ex" ] && grep -qxF '/.worktree.env' "$ex"; then return 0; fi
-  if [ -s "$ex" ] && [ -n "$(tail -c 1 "$ex")" ]; then printf '\n' >> "$ex"; fi
-  printf '/.worktree.env\n' >> "$ex"
+  if [ -s "$ex" ] && [ -n "$(tail -c 1 "$ex")" ]; then printf '\n' >> "$ex" || return 1; fi
+  printf '/.worktree.env\n' >> "$ex" || return 1
 }
 
 # link_env <primary> <worktree>: symlink the primary's .env, else copy .env.example (warn),
@@ -252,15 +255,15 @@ link_env() {
   dest="$wt/$rel/.env"
   ex="$primary/$rel/.env.example"
   if [ -e "$dest" ] || [ -L "$dest" ]; then return 0; fi
-  mkdir -p "$wt/$rel"
+  mkdir -p "$wt/$rel" || return 1
   if [ -e "$src" ]; then
-    ln -s "$src" "$dest"
+    ln -s "$src" "$dest" || return 1
     return 0
   fi
   if [ ! -f "$ex" ] && [ -f "$wt/$rel/.env.example" ]; then ex="$wt/$rel/.env.example"; fi
   if [ -f "$ex" ]; then
-    cp "$ex" "$dest"
-    chmod 600 "$dest"
+    cp "$ex" "$dest" || return 1
+    chmod 600 "$dest" || return 1
     wt_warn "the primary has no $rel/.env; copied .env.example (fill in real values before starting the bot)"
   else
     wt_warn "neither $rel/.env nor .env.example found; the bot will have no secrets"
@@ -271,7 +274,7 @@ link_env() {
 # invoking user so Docker never makes them root-owned.
 ensure_bind_dirs() {
   local wt="$1"
-  mkdir -p "$wt/$WT_BOT_REL/logs" "$wt/$WT_BOT_REL/commands"
+  mkdir -p "$wt/$WT_BOT_REL/logs" "$wt/$WT_BOT_REL/commands" || return 1
 }
 
 wt_mtime() { stat -c %Y "$1" 2> /dev/null || stat -f %m "$1"; }
@@ -357,9 +360,105 @@ rm_project() {
   printf '%s\n' "$val"
 }
 
-# Step 4 replaces this placeholder case with the new / rm subcommands.
+# wt_finish_setup: everything after `git worktree add` that can fail (the caller prints the
+# discard command on failure). Explicit returns: this runs inside an `if`, where errexit is off.
+wt_finish_setup() {
+  local sp
+  link_env "$W_PRIMARY" "$W_PATH" || return 1
+  ensure_bind_dirs "$W_PATH" || return 1
+  sp="$(alloc_slot "$W_SLUG")" || return 1
+  write_env "$W_PATH" "$W_SLUG" "${sp% *}" "${sp#* }" || return 1
+}
+
+# wt_new: create .claude/worktrees/<slug> with its own identity, then build (never `up`).
+wt_new() {
+  plan_new || return 1
+  acquire_lock || return 1
+  mkdir -p "$W_PRIMARY/.claude/worktrees" || return 1
+  ensure_excludes || return 1
+  case "$W_MODE" in
+    local) git -C "$W_PRIMARY" worktree add "$W_PATH" "$W_BRANCH" ;;
+    origin) git -C "$W_PRIMARY" worktree add --track -b "$W_BRANCH" "$W_PATH" "origin/$W_BRANCH" ;;
+    *) git -C "$W_PRIMARY" worktree add --no-track -b "$W_BRANCH" "$W_PATH" "$W_BASE" ;;
+  esac || return 1
+
+  if ! wt_finish_setup; then
+    wt_err "setup failed after the worktree was added; it was left in place at $W_PATH"
+    printf 'discard it with: git -C %s worktree remove %s\n' "$W_PRIMARY" "$W_PATH" >&2
+    if [ "$W_MODE" != local ]; then
+      printf 'if the branch %s was newly created and is unwanted, also: git branch -D %s\n' "$W_BRANCH" "$W_BRANCH" >&2
+    fi
+    return 1
+  fi
+  release_lock
+
+  if [ -n "${WT_SKIP_BUILD-}" ]; then
+    printf 'created %s (build skipped)\n' "$W_PATH"
+    return 0
+  fi
+  if ! make -C "$W_PATH" build; then
+    wt_err "build failed; the worktree was left in place at $W_PATH"
+    printf 'discard it with: make -C %s worktree-rm\n' "$W_PATH" >&2
+    printf 'retry the build with: make -C %s build\n' "$W_PATH" >&2
+    return 1
+  fi
+  printf 'created %s\n' "$W_PATH"
+}
+
+# wt_rm: remove the checkout containing the cwd (never the primary). The compose stack holds the
+# shared Discord token, so a failed `down` aborts and leaves the worktree (DD-4).
+wt_rm() {
+  local top wt primary project img want
+  top="$(git rev-parse --show-toplevel)" || return 1
+  wt="$(cd -P "$top" && pwd -P)" || return 1
+  primary="$(wt_primary_root)" || return 1
+  if [ "$wt" = "$primary" ]; then
+    wt_err "refusing to remove the primary checkout ($primary)"
+    return 1
+  fi
+  case "$wt" in
+    "$primary"/.claude/worktrees/?*)
+      # Only direct children: a nested path (worktrees/x/y) is not one of ours.
+      case "${wt#"$primary"/.claude/worktrees/}" in
+        */*)
+          wt_err "refusing to remove $wt: not a direct child of $primary/.claude/worktrees/"
+          return 1
+          ;;
+      esac
+      ;;
+    *)
+      wt_err "refusing to remove $wt: not under $primary/.claude/worktrees/"
+      return 1
+      ;;
+  esac
+
+  if project="$(rm_project "$wt")"; then
+    if ! docker compose -p "$project" --project-directory "$wt/$WT_BOT_REL" -f "$wt/$WT_BOT_REL/docker-compose.yml" down; then
+      wt_err "compose down failed for project '$project'; the worktree was left in place at $wt"
+      printf 'start Docker and rerun: make worktree-rm\n' >&2
+      printf 'or, after confirming no container of project %s is running: git -C %s worktree remove %s\n' "$project" "$primary" "$wt" >&2
+      return 1
+    fi
+    img="$(sed -n 's/^BOT_IMAGE=//p' "$wt/.worktree.env" | tail -n 1)" || true
+    want="$WT_PROJECT_PREFIX-$(basename "$wt"):local"
+    if [ "$img" = "$want" ]; then
+      docker image rm "$img" || wt_warn "could not remove image $img"
+    else
+      wt_warn "BOT_IMAGE in .worktree.env is '${img:-<unset>}', not '$want'; leaving images alone"
+    fi
+  fi
+
+  # The cwd is inside the checkout being removed: step out first so git can delete it.
+  cd "$primary" || return 1
+  git worktree remove "$wt" || return 1
+  printf 'removed %s (branch kept)\n' "$wt"
+  printf 'your shell is still in the removed directory; run: cd %s\n' "$primary"
+}
+
 wt_main() {
   case "${1-}" in
+    new) wt_new ;;
+    rm) wt_rm ;;
     *)
       wt_err "usage: worktree.sh new|rm (WT_NAME / WT_BRANCH / WT_BASE from the environment)"
       return 2

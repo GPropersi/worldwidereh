@@ -11,7 +11,7 @@
 
 # Make/CI leak these in; every case that needs one sets it itself.
 unset COMPOSE_PROJECT_NAME BOT_PORT BOT_CONTAINER BOT_IMAGE MAKELEVEL MAKEFLAGS MFLAGS
-unset WT_BUSY_PORTS WT_LOCK_NOW WT_NO_JQ WT_SKIP_BUILD WT_STUB_LS WT_STUB_LOG WT_STUB_FAIL WT_STUB_PS WT_STUB_RC WT_NAME WT_BRANCH WT_BASE GIT_DIR GIT_WORK_TREE
+unset WT_BUSY_PORTS WT_LOCK_NOW WT_NO_JQ WT_SKIP_BUILD WT_STUB_LS WT_STUB_LOG WT_STUB_FAIL WT_STUB_PS WT_STUB_RC WT_STUB_FAIL_IMAGE WT_MAKE_LOG WT_MAKE_RC WT_DUMP WT_NAME WT_BRANCH WT_BASE GIT_DIR GIT_WORK_TREE
 
 TEST_FILE="${BASH_SOURCE[0]}"
 TEST_DIR="$(cd "$(dirname "$TEST_FILE")" && pwd)"
@@ -34,12 +34,35 @@ cat > "$ROOT/stub/docker" <<'STUB'
 #!/usr/bin/env bash
 printf '%s\n' "$*" >> "${WT_STUB_LOG:-/dev/null}"
 if [ -n "${WT_STUB_FAIL:-}" ]; then exit 1; fi
+if [ -n "${WT_STUB_FAIL_IMAGE:-}" ] && [ "${1:-}" = image ] && [ "${2:-}" = rm ]; then exit 1; fi
 if [ "${1:-}" = compose ] && [ "${2:-}" = ls ]; then printf '%s\n' "${WT_STUB_LS:-[]}"; exit 0; fi
 if [ "${1:-}" = ps ]; then printf '%s' "${WT_STUB_PS:-}"; exit 0; fi
 exit "${WT_STUB_RC:-0}"
 STUB
 chmod +x "$ROOT/stub/docker"
 export PATH="$ROOT/stub:$PATH"
+
+# Real make, resolved before any case prepends a stub; the e2e stub make lives in its own dir
+# that only the e2e cases put on PATH.
+REAL_MAKE="$(command -v make)"
+SCRIPT="$TEST_DIR/worktree.sh"
+MAKEFILE_SRC="$TEST_DIR/../Makefile"
+mkdir -p "$ROOT/stubmake"
+cat > "$ROOT/stubmake/make" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "${WT_MAKE_LOG:-/dev/null}"
+exit "${WT_MAKE_RC:-0}"
+STUB
+chmod +x "$ROOT/stubmake/make"
+# Stub bash for the Makefile-level cases: records argv, dumps its environment.
+mkdir -p "$ROOT/stubbash"
+cat > "$ROOT/stubbash/bash" <<'STUB'
+#!/bin/sh
+printf '%s\n' "$*" >> "$WT_DUMP.argv"
+env > "$WT_DUMP.env"
+exit 0
+STUB
+chmod +x "$ROOT/stubbash/bash"
 
 # ---- assertion helpers (record into the per-case log) ----
 CASE_LOG=""
@@ -514,6 +537,23 @@ t_link_env_both_missing_warns() {
   assert_contains "$err" "warning" "warns"
   assert_eq "no" "$([ -e "$wt/$rel/.env" ] && echo yes || echo no)" "nothing created"
 }
+t_link_env_failure_propagates() {
+  fx_new
+  local rel=rehplacer-discord-bot/RehplacerBot wt="$PRIMARY/.claude/worktrees/w" parent rc
+  parent="$wt/${rel%/*}"
+  mkdir -p "$PRIMARY/$rel" "$parent"
+  echo 'DISCORD_TOKEN=dummy' > "$PRIMARY/$rel/.env"
+  chmod 500 "$parent"
+  if [ "$(id -u)" = 0 ] || [ -w "$parent" ]; then
+    chmod 700 "$parent"
+    skip "cannot make a directory unwritable (root or permissive fs)"
+    return 0
+  fi
+  link_env "$PRIMARY" "$wt" 2> /dev/null
+  rc=$?
+  chmod 700 "$parent"
+  assert_eq 1 "$rc" "link_env returns non-zero when mkdir fails"
+}
 
 t_bind_dirs_created() {
   fx_new
@@ -697,6 +737,282 @@ t_rm_project_match() {
   out="$(rm_project "$wt" 2> /dev/null)"
   assert_eq 0 $? "rc"
   assert_eq "worldwidereh-proof-a" "$out" "project"
+}
+
+# ---- Step 4: new / rm end-to-end (stub docker, stub make, no real build) ----
+
+BOT_REL=rehplacer-discord-bot/RehplacerBot
+fx_e2e() { # fx_new plus a dummy primary .env (excluded, like the repo's .gitignore does)
+  fx_new || return 1
+  mkdir -p "$PRIMARY/$BOT_REL"
+  echo 'DISCORD_TOKEN=dummy' > "$PRIMARY/$BOT_REL/.env"
+  printf '.env\n' >> "$(wt_common_dir)/info/exclude"
+}
+run_in() { # run_in <dir> cmd...: RUN_RC / RUN_OUT (stdout+stderr)
+  local d=$1
+  shift
+  (cd "$d" && "$@") > "$FX/run.out" 2>&1
+  RUN_RC=$?
+  RUN_OUT="$(cat "$FX/run.out")"
+}
+mk_wt() { # mk_wt <name> [branch]: create a worktree without building
+  WT_NAME=$1 WT_BRANCH=${2-} WT_SKIP_BUILD=1 run_in "$PRIMARY" bash "$SCRIPT" new
+}
+yesno() { if "$@"; then echo yes; else echo no; fi; }
+
+t_new_creates_worktree_new_branch() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  export WT_MAKE_LOG="$FX/make.log"
+  PATH="$ROOT/stubmake:$PATH" mk_wt proof-a proof/a
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_eq "proof/a" "$(git -C "$wt" branch --show-current)" "on the new branch"
+  assert_eq "$(git rev-parse origin/main)" "$(git rev-parse proof/a)" "cut from the base"
+  git config --get branch.proof/a.remote > /dev/null
+  assert_eq 1 $? "no upstream (--no-track)"
+  assert_contains "$(cat "$wt/.worktree.env")" "COMPOSE_PROJECT_NAME=worldwidereh-proof-a" "env file written"
+  assert_eq "$PRIMARY/$BOT_REL/.env" "$(readlink "$wt/$BOT_REL/.env")" ".env linked"
+  assert_eq "yes" "$(yesno test -d "$wt/$BOT_REL/logs" -a -d "$wt/$BOT_REL/commands")" "bind dirs"
+  assert_eq "no" "$(yesno test -e "$FX/make.log")" "build skipped: make never called"
+  assert_eq "no" "$(yesno test -e "$(wt_common_dir)/worldwidereh-worktree-slot.lock")" "lock released"
+}
+t_new_runs_build_never_up() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  export WT_MAKE_LOG="$FX/make.log"
+  WT_NAME=proof-a PATH="$ROOT/stubmake:$PATH" run_in "$PRIMARY" bash "$SCRIPT" new
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_eq "-C $wt build" "$(cat "$WT_MAKE_LOG")" "only the build was invoked"
+  assert_not_contains "$(cat "$WT_MAKE_LOG")" " up" "never up"
+}
+t_new_build_failure_keeps_worktree() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  export WT_MAKE_LOG="$FX/make.log" WT_MAKE_RC=2
+  WT_NAME=proof-a PATH="$ROOT/stubmake:$PATH" run_in "$PRIMARY" bash "$SCRIPT" new
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_eq "yes" "$(yesno test -d "$wt")" "worktree left in place"
+  assert_contains "$RUN_OUT" "make -C $wt worktree-rm" "discard command"
+  assert_contains "$RUN_OUT" "make -C $wt build" "retry command"
+}
+t_new_existing_local_branch_attached() {
+  fx_e2e
+  git branch feat
+  git commit -q --allow-empty -m later
+  local old wt="$PRIMARY/.claude/worktrees/feat"
+  old="$(git rev-parse feat)"
+  WT_BASE=origin/nope mk_wt feat feat
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_eq "feat" "$(git -C "$wt" branch --show-current)" "attached"
+  assert_eq "$old" "$(git rev-parse feat)" "old tip kept"
+  assert_contains "$RUN_OUT" "ignored" "base ignored with a warning"
+}
+t_new_origin_only_branch_tracks() {
+  fx_e2e
+  git push -q origin main:remote-only
+  git fetch -q origin
+  local wt="$PRIMARY/.claude/worktrees/remote-only"
+  WT_BASE=origin/nope mk_wt remote-only remote-only
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_contains "$RUN_OUT" "ignored" "base ignored with a warning"
+  assert_eq "remote-only" "$(git -C "$wt" branch --show-current)" "on the branch"
+  assert_eq "origin" "$(git config --get branch.remote-only.remote)" "tracks origin"
+  assert_eq "refs/heads/remote-only" "$(git config --get branch.remote-only.merge)" "merge set"
+}
+t_new_setup_failure_leaves_worktree() {
+  fx_e2e
+  local s wt="$PRIMARY/.claude/worktrees/ok"
+  export WT_BUSY_PORTS=""
+  for s in $(seq 1 99); do claim_slot "$s"; done
+  mk_wt ok
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_eq "yes" "$(yesno test -d "$wt")" "worktree left in place"
+  assert_eq "no" "$(yesno test -e "$(wt_common_dir)/worldwidereh-worktree-slot.lock")" "lock released"
+  assert_contains "$RUN_OUT" "git -C $PRIMARY worktree remove $wt" "exact discard command"
+  assert_not_contains "$RUN_OUT" "--force" "never suggests force"
+  assert_contains "$RUN_OUT" "git branch -D ok" "newly created branch discard note"
+  assert_contains "$RUN_OUT" "no free port slot" "names slot exhaustion"
+}
+t_new_from_linked_worktree() {
+  fx_e2e
+  mk_wt first
+  assert_eq 0 "$RUN_RC" "first ($RUN_OUT)"
+  WT_NAME=second WT_SKIP_BUILD=1 run_in "$PRIMARY/.claude/worktrees/first" bash "$SCRIPT" new
+  assert_eq 0 "$RUN_RC" "second ($RUN_OUT)"
+  local wt="$PRIMARY/.claude/worktrees/second"
+  assert_eq "yes" "$(yesno test -d "$wt")" "lands under the primary"
+  assert_eq "no" "$(yesno test -e "$PRIMARY/.claude/worktrees/first/.claude")" "not nested in the caller"
+  assert_eq "$PRIMARY/$BOT_REL/.env" "$(readlink "$wt/$BOT_REL/.env")" ".env points at the primary's file"
+  assert_eq 1 "$(grep -cxF '/.worktree.env' "$PRIMARY/.git/info/exclude")" "exclude entry in the common dir"
+  assert_eq "no" "$(yesno test -e "$PRIMARY/.git/worldwidereh-worktree-slot.lock")" "lock (common dir) released"
+}
+
+t_rm_full_flow() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a" bot log
+  bot="$wt/$BOT_REL"
+  mk_wt proof-a proof/a
+  export WT_STUB_LOG="$FX/docker-rm.log"
+  : > "$WT_STUB_LOG"
+  run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  log="$(cat "$WT_STUB_LOG")"
+  assert_eq "compose -p worldwidereh-proof-a --project-directory $bot -f $bot/docker-compose.yml down
+image rm worldwidereh-proof-a:local" "$log" "exact docker argv, in order"
+  assert_eq "no" "$(yesno test -e "$wt")" "worktree removed"
+  assert_eq "yes" "$(yesno git show-ref --verify --quiet refs/heads/proof/a)" "branch kept"
+}
+t_rm_skip_when_project_mismatch() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  sed -i.bak 's/^COMPOSE_PROJECT_NAME=.*/COMPOSE_PROJECT_NAME=worldwidereh/' "$wt/.worktree.env"
+  rm -f "$wt/.worktree.env.bak"
+  export WT_STUB_LOG="$FX/docker-rm.log"
+  : > "$WT_STUB_LOG"
+  run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_eq "" "$(cat "$WT_STUB_LOG")" "docker never called"
+  assert_contains "$RUN_OUT" "skipping the docker step" "warns"
+  assert_eq "no" "$(yesno test -e "$wt")" "worktree still removed"
+}
+t_rm_refuses_primary() {
+  fx_e2e
+  run_in "$PRIMARY" bash "$SCRIPT" rm
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_contains "$RUN_OUT" "primary" "message"
+  assert_eq "yes" "$(yesno test -d "$PRIMARY/.git")" "primary intact"
+}
+t_rm_refuses_path_outside_worktrees() {
+  fx_e2e
+  git worktree add -q -b other "$FX/elsewhere"
+  run_in "$FX/elsewhere" bash "$SCRIPT" rm
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_contains "$RUN_OUT" "not under" "message"
+  assert_eq "yes" "$(yesno test -d "$FX/elsewhere")" "left in place"
+}
+t_rm_refuses_nested_path() {
+  fx_e2e
+  local nested="$PRIMARY/.claude/worktrees/x/y"
+  git worktree add -q -b nested "$nested"
+  run_in "$nested" bash "$SCRIPT" rm
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_contains "$RUN_OUT" "not a direct child" "message"
+  assert_eq "yes" "$(yesno test -d "$nested")" "left in place"
+}
+t_rm_without_force_keeps_dirty_worktree() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  echo stray > "$wt/stray.txt"
+  run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_eq "yes" "$(yesno test -d "$wt")" "worktree stays"
+  assert_contains "$RUN_OUT" "untracked" "git's error surfaced"
+  assert_not_contains "$RUN_OUT" "removed $wt" "no success message"
+}
+t_rm_success_prints_cd_hint() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_contains "$RUN_OUT" "cd $PRIMARY" "cd hint"
+}
+t_rm_down_failure_is_fatal() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  WT_STUB_FAIL=1 run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 1 "$RUN_RC" "rc"
+  assert_eq "yes" "$(yesno test -d "$wt")" "worktree left in place (DD-4)"
+  assert_contains "$RUN_OUT" "start Docker and rerun" "fallback one"
+  assert_contains "$RUN_OUT" "git -C $PRIMARY worktree remove $wt" "fallback two"
+}
+t_rm_image_failure_only_warns() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  WT_STUB_FAIL_IMAGE=1 run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_contains "$RUN_OUT" "could not remove image" "warns"
+  assert_eq "no" "$(yesno test -e "$wt")" "worktree removed"
+}
+t_rm_foreign_image_not_removed() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  sed -i.bak 's/^BOT_IMAGE=.*/BOT_IMAGE=rehplacer-bot:latest/' "$wt/.worktree.env"
+  rm -f "$wt/.worktree.env.bak"
+  export WT_STUB_LOG="$FX/docker-rm.log"
+  : > "$WT_STUB_LOG"
+  run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_contains "$(cat "$WT_STUB_LOG")" "compose -p worldwidereh-proof-a" "down ran"
+  assert_not_contains "$(cat "$WT_STUB_LOG")" "image rm" "shared image untouched"
+  assert_eq "no" "$(yesno test -e "$wt")" "worktree removed"
+}
+t_rm_empty_image_not_removed() {
+  fx_e2e
+  local wt="$PRIMARY/.claude/worktrees/proof-a"
+  mk_wt proof-a
+  sed -i.bak '/^BOT_IMAGE=/d' "$wt/.worktree.env"
+  rm -f "$wt/.worktree.env.bak"
+  export WT_STUB_LOG="$FX/docker-rm.log"
+  : > "$WT_STUB_LOG"
+  run_in "$wt" bash "$SCRIPT" rm
+  assert_eq 0 "$RUN_RC" "rc ($RUN_OUT)"
+  assert_contains "$(cat "$WT_STUB_LOG")" "compose -p worldwidereh-proof-a" "down ran"
+  assert_not_contains "$(cat "$WT_STUB_LOG")" "image rm" "no image removal"
+  assert_eq "no" "$(yesno test -e "$wt")" "worktree removed"
+}
+
+# ---- Step 4: Makefile-level cases (real make, stub bash first on PATH) ----
+
+mk_dir() { # a temp dir holding a copy of the Makefile; MD
+  MD="$(mktemp -d "$ROOT/mk.XXXXXX")"
+  cp "$MAKEFILE_SRC" "$MD/Makefile"
+  export WT_DUMP="$MD/dump"
+}
+make_stubbed() { # make_stubbed args...: real make, stub bash on PATH
+  (cd "$MD" && PATH="$ROOT/stubbash:$PATH" "$REAL_MAKE" --no-print-directory "$@") > "$MD/make.out" 2>&1
+  MK_RC=$?
+}
+t_make_quoting_roundtrip() {
+  mk_dir
+  make_stubbed worktree-new name="a'b" b="x y"
+  assert_eq 0 "$MK_RC" "rc ($(cat "$MD/make.out"))"
+  assert_eq "WT_NAME=a'b" "$(grep '^WT_NAME=' "$WT_DUMP.env")" "name round-trips"
+  assert_eq "WT_BRANCH=x y" "$(grep '^WT_BRANCH=' "$WT_DUMP.env")" "branch round-trips"
+  assert_eq "scripts/worktree.sh new" "$(cat "$WT_DUMP.argv")" "script and subcommand"
+  rm -f "$WT_DUMP.env" "$WT_DUMP.argv"
+  make_stubbed worktree-new name="'x y'"
+  assert_eq "WT_NAME='x y'" "$(grep '^WT_NAME=' "$WT_DUMP.env")" "quoted value kept as typed"
+}
+t_make_new_does_not_leak_identity() {
+  mk_dir
+  make_stubbed worktree-new name=ok
+  assert_eq 0 "$MK_RC" "rc"
+  assert_eq "yes" "$(yesno test -s "$WT_DUMP.env")" "stub saw an environment"
+  assert_eq 0 "$(grep -cE '^(BOT_PORT|COMPOSE_PROJECT_NAME|BOT_CONTAINER|BOT_IMAGE)=' "$WT_DUMP.env")" "none of the four exported"
+}
+t_make_rm_exports_identity_positive_control() {
+  mk_dir
+  make_stubbed worktree-rm
+  assert_eq 0 "$MK_RC" "rc"
+  assert_eq 4 "$(grep -cE '^(BOT_PORT|COMPOSE_PROJECT_NAME|BOT_CONTAINER|BOT_IMAGE)=' "$WT_DUMP.env")" "all four exported to worktree-rm"
+  assert_eq "scripts/worktree.sh rm" "$(cat "$WT_DUMP.argv")" "script and subcommand"
+}
+t_make_environment_beats_file() {
+  mk_dir
+  printf 'COMPOSE_PROJECT_NAME=filep\nBOT_PORT=19001\n' > "$MD/.worktree.env"
+  local out
+  out="$(cd "$MD" && "$REAL_MAKE" --no-print-directory worktree-ports)"
+  assert_contains "$out" "COMPOSE_PROJECT_NAME=filep" "file beats default"
+  assert_contains "$out" "BOT_PORT=19001" "file beats default"
+  out="$(cd "$MD" && COMPOSE_PROJECT_NAME=envp BOT_PORT=19002 "$REAL_MAKE" --no-print-directory worktree-ports)"
+  assert_contains "$out" "COMPOSE_PROJECT_NAME=envp" "environment beats file"
+  assert_contains "$out" "BOT_PORT=19002" "environment beats file"
 }
 
 # ================= runner =================
