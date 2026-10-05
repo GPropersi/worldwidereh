@@ -38,6 +38,12 @@ the static site itself.
   | List targets | `make help` |
 
   Worktrees (ports, isolation, the singleton `make up` restriction, removal): see `docs/worktrees.md`.
+- **Push gate:** (suites a push must pass; first matching row wins per changed path, all matched suites run sequentially)
+  | Paths (space-separated globs)                  | Command                 |
+  | ----------------------------------------------- | ----------------------- |
+  | `rehplacer-discord-bot/**`                      | `make test`             |
+  | `scripts/** Makefile`                           | `make scripts-test`     |
+  | `docs/** *.md .claude/** .gitignore`            | na docs and config only |
 - **GitHub project board:** n/a
 - **Issue labels:** resolve at runtime via `gh label list --repo GPropersi/worldwidereh` (do not invent labels)
 - **PR reviewer:** `GPropersi`
