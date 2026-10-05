@@ -36,6 +36,8 @@ the static site itself.
   | Remove worktree | `make worktree-rm` (run inside the worktree) |
   | Resolved port/project | `make worktree-ports` |
   | List targets | `make help` |
+
+  Worktrees (ports, isolation, the singleton `make up` restriction, removal): see `docs/worktrees.md`.
 - **GitHub project board:** n/a
 - **Issue labels:** resolve at runtime via `gh label list --repo GPropersi/worldwidereh` (do not invent labels)
 - **PR reviewer:** `GPropersi`
