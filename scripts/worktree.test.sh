@@ -1035,6 +1035,18 @@ t_make_defaults_without_env_file() {
   assert_eq "BOT_PORT=9980
 COMPOSE_PROJECT_NAME=worldwidereh" "$out" "defaults, exact"
 }
+t_make_tampered_env_values_fall_back() {
+  mk_dir
+  printf 'COMPOSE_PROJECT_NAME=x; touch %s/pwned\nBOT_PORT=%s\nBOT_CONTAINER=a b\nBOT_IMAGE=img:local\n' "$MD" "\$(id)" > "$MD/.worktree.env"
+  local out
+  out="$(cd "$MD" && "$REAL_MAKE" --no-print-directory worktree-ports)"
+  assert_eq "BOT_PORT=9980
+COMPOSE_PROJECT_NAME=worldwidereh" "$out" "tampered values fall back to defaults"
+  assert_eq "no" "$(yesno test -e "$MD/pwned")" "injected command never ran"
+  printf 'BOT_PORT=19001\nBOT_PORT=bad;x\nBOT_PORT=-1\n' > "$MD/.worktree.env"
+  out="$(cd "$MD" && "$REAL_MAKE" --no-print-directory worktree-ports)"
+  assert_contains "$out" "BOT_PORT=19001" "invalid later line ignored, last valid wins"
+}
 t_make_command_line_beats_all() {
   mk_dir
   printf 'COMPOSE_PROJECT_NAME=filep\nBOT_PORT=19001\n' > "$MD/.worktree.env"

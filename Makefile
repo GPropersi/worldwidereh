@@ -5,7 +5,9 @@ BOT_DIR := rehplacer-discord-bot/RehplacerBot
 
 # Per-checkout identity. Precedence: defaults < .worktree.env < environment < make VAR=...
 # (no -include of .worktree.env: an included assignment would beat the environment).
-wtenv = $(shell sed -n 's/^$(1)=//p' .worktree.env 2>/dev/null | tail -n 1)
+# Only values matching [A-Za-z0-9][A-Za-z0-9._:-]* are accepted (no leading dash, so never option-like); a tampered line is ignored (default applies),
+# so unvalidated file content never reaches a recipe line.
+wtenv = $(shell sed -n 's/^$(1)=\([A-Za-z0-9][A-Za-z0-9._:-]*\)$$/\1/p' .worktree.env 2>/dev/null | tail -n 1)
 
 ifndef COMPOSE_PROJECT_NAME
 COMPOSE_PROJECT_NAME := $(or $(call wtenv,COMPOSE_PROJECT_NAME),worldwidereh)
