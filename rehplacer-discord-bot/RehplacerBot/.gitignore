@@ -6,6 +6,8 @@ build/
 *.jar
 .env
 logs/
+# Unused compose bind-mount source (anchored: src/main/resources/commands/ is tracked)
+/commands/
 
 ### IntelliJ IDEA ###
 .idea/modules.xml

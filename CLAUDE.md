@@ -30,3 +30,10 @@ the static site itself.
 - **GitHub project board:** n/a
 - **Issue labels:** resolve at runtime via `gh label list --repo GPropersi/worldwidereh` (do not invent labels)
 - **PR reviewer:** `GPropersi`
+- **Worktree policy:** `singleton-runtime`
+- **Worktree guarded targets:** `up`
+- **Worktree link:** `rehplacer-discord-bot/RehplacerBot/.env`
+- **Worktree ports:** `BOT_PORT=9980`
+- **Worktree setup:** `n/a`
+- **Worktree teardown:** `n/a`
+- **Worktree allowed targets:** `n/a`
