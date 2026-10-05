@@ -15,9 +15,9 @@ the static site itself.
 - **Default branch:** `main`
 - **Plans store (central):** `~/code/plans/worldwidereh/{open,completed,research}/<topic>/` (no in-repo `plans/` directory; see `~/code/CLAUDE.md` "Central Plans Store")
 - **Plans bucket:** `worldwidereh`
-- **Bot identity:** n/a  <!-- personal-collaborator auth, like discord_bot; not on the bot push path -->
-- **Bot push script:** n/a
-- **Token generator:** n/a
+- **Bot identity:** `gpropersi-claude[bot]` `141576524+gpropersi-claude[bot]@users.noreply.github.com`
+- **Bot push script:** `~/code/.claude/scripts/gh-app-push.sh`
+- **Token generator:** `~/code/.claude/scripts/generate-gh-token.sh`
 - **Container runtime:** n/a for the static site; the `rehplacer-discord-bot/RehplacerBot/` subproject has its own `docker-compose.yml` (`docker compose up --build` within that dir). The root Makefile drives it as `docker compose -p $(COMPOSE_PROJECT_NAME) --project-directory ... -f ...`, with per-checkout values (`COMPOSE_PROJECT_NAME`, `BOT_PORT`, `BOT_CONTAINER`, `BOT_IMAGE`) read from the gitignored `.worktree.env`; `make up` is guarded (singleton-runtime): start it via `~/code/.claude/scripts/wt-singleton.sh run <checkout> up`
 - **App URL (Playwright MCP):** n/a (static `index.html` — open the file directly or serve with any static server)
 - **Test login:** n/a
