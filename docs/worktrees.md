@@ -88,6 +88,8 @@ make worktree-rm
 
 `deploy.sh` and the Raspberry Pi keep the default names and port, byte for byte: image `rehplacer-bot:latest`, container `rehplacer-bot`, host port `9980`, and the `journald` tag `discord-bot-rehplacer`. The compose file only parameterizes them with defaults (`${BOT_IMAGE:-rehplacer-bot:latest}`, `${BOT_CONTAINER:-rehplacer-bot}`, `${BOT_PORT:-9980}`). The Pi does not use the Makefile. Keep per-worktree values out of `.env`, since `deploy.sh` copies it to the Pi. A worktree's `.env` may be a placeholder copy of `.env.example`, and `deploy.sh` scps `.env` to the Pi and builds and tags the shared `rehplacer-bot:latest`, so running it from a worktree could overwrite the Pi's real `.env` with placeholders and retag the shared image.
 
+Bare `docker compose` in `RehplacerBot/` uses the project name `rehplacerbot`, which the make targets do not manage. If an old local stack from before the rename exists, run `docker compose -p rehplacerbot down` once so `make up` does not collide on the container name and port 9980.
+
 ## Via the stronghold
 
 From `~/code`, `make wt-new REPO=worldwidereh BRANCH=<branch>` and `make wt-rm REPO=worldwidereh BRANCH=<branch>` delegate to this repo's `worktree-new` and `worktree-rm` targets, so the behavior above applies. `INIT=1` bootstraps a plain worktree (its generated `.worktree.env` carries only `COMPOSE_PROJECT_NAME`, so the port stays `9980`) for a branch whose repo has no owned targets yet; prefer the owned targets afterwards.
