@@ -94,4 +94,4 @@ From `~/code`, `make wt-new REPO=worldwidereh BRANCH=<branch>` and `make wt-rm R
 
 ## Residual risk
 
-The policy does not stop `deploy.sh`, which restarts the production bot on the Pi with the same token. Do not run it while a local copy of the bot is live, and never run it from a worktree: its `.env` may be a placeholder copy of `.env.example` that `deploy.sh` would scp over the Pi's real `.env`, and it would build and retag the shared `rehplacer-bot:latest`.
+The policy does not stop `deploy.sh`, which restarts the production bot on the Pi with the same token. Do not run it while a local copy of the bot is live, and never run it from a worktree (see the Pi deploy path for why).
